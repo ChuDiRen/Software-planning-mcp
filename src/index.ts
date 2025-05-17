@@ -10,7 +10,7 @@ import {
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { storage } from './storage.js';
-import { SEQUENTIAL_THINKING_PROMPT, formatPlanAsTodos } from './prompts.js';
+import { SEQUENTIAL_THINKING_PROMPT, VISUALIZATION_PROMPT, formatPlanAsTodos, formatTodoAsText } from './prompts.js';
 import { Goal, Todo } from './types.js';
 
 class SoftwarePlanningServer {
@@ -21,7 +21,7 @@ class SoftwarePlanningServer {
     this.server = new Server(
       {
         name: 'software-planning-tool',
-        version: '0.1.0',
+        version: '0.0.0',
       },
       {
         capabilities: {
@@ -50,6 +50,12 @@ class SoftwarePlanningServer {
           uri: 'planning://implementation-plan',
           name: 'Implementation Plan',
           description: 'The current implementation plan with todos',
+          mimeType: 'application/json',
+        },
+        {
+          uri: 'planning://stats',
+          name: 'Plan Statistics',
+          description: 'Statistical information about the current plan',
           mimeType: 'application/json',
         },
       ],
@@ -98,6 +104,24 @@ class SoftwarePlanningServer {
             ],
           };
         }
+        case 'planning://stats': {
+          if (!this.currentGoal) {
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              'No active goal. Start a new planning session first.'
+            );
+          }
+          const stats = await storage.getPlanStats(this.currentGoal.id);
+          return {
+            contents: [
+              {
+                uri: request.params.uri,
+                mimeType: 'application/json',
+                text: JSON.stringify(stats, null, 2),
+              },
+            ],
+          };
+        }
         default:
           throw new McpError(
             ErrorCode.InvalidRequest,
@@ -120,6 +144,10 @@ class SoftwarePlanningServer {
                 type: 'string',
                 description: 'The software development goal to plan',
               },
+              deadline: {
+                type: 'string',
+                description: 'Optional deadline for the goal (YYYY-MM-DD format)',
+              },
             },
             required: ['goal'],
           },
@@ -133,6 +161,10 @@ class SoftwarePlanningServer {
               plan: {
                 type: 'string',
                 description: 'The implementation plan text to save',
+              },
+              notes: {
+                type: 'string',
+                description: 'Optional notes about the plan',
               },
             },
             required: ['plan'],
@@ -158,9 +190,55 @@ class SoftwarePlanningServer {
                 minimum: 0,
                 maximum: 10,
               },
+              priority: {
+                type: 'string',
+                description: 'Priority level (critical, high, medium, low)',
+                enum: ['critical', 'high', 'medium', 'low'],
+              },
+              dueDate: {
+                type: 'string',
+                description: 'Due date in YYYY-MM-DD format',
+              },
+              tags: {
+                type: 'array',
+                description: 'Tags or categories for the todo item',
+                items: {
+                  type: 'string',
+                },
+              },
+              assignedTo: {
+                type: 'string',
+                description: 'Person responsible for this task',
+              },
+              milestone: {
+                type: 'boolean',
+                description: 'Whether this todo is a milestone',
+              },
               codeExample: {
                 type: 'string',
                 description: 'Optional code example',
+              },
+              steps: {
+                type: 'array',
+                description: 'Step-by-step instructions to complete the task',
+                items: {
+                  type: 'string',
+                },
+              },
+              dependencies: {
+                type: 'array',
+                description: 'Dependencies required for this task',
+                items: {
+                  type: 'string',
+                },
+              },
+              risk: {
+                type: 'string',
+                description: 'Potential risks associated with this task',
+              },
+              output: {
+                type: 'string',
+                description: 'Expected output or deliverable',
               },
             },
             required: ['title', 'description', 'complexity'],
@@ -185,7 +263,17 @@ class SoftwarePlanningServer {
           description: 'Get all todos in the current plan',
           inputSchema: {
             type: 'object',
-            properties: {},
+            properties: {
+              filter: {
+                type: 'string',
+                description: 'Optional filter type: all, incomplete, completed, milestone, priority, tag',
+                enum: ['all', 'incomplete', 'completed', 'milestone', 'priority', 'tag', 'assignedTo'],
+              },
+              filterValue: {
+                type: 'string',
+                description: 'Value for the filter (e.g., priority level, tag name, or assignee name)',
+              },
+            },
           },
         },
         {
@@ -206,14 +294,106 @@ class SoftwarePlanningServer {
             required: ['todoId', 'isComplete'],
           },
         },
+        {
+          name: 'update_todo',
+          description: 'Update a todo item with new values',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              todoId: {
+                type: 'string',
+                description: 'ID of the todo item to update',
+              },
+              updates: {
+                type: 'object',
+                description: 'Fields to update',
+                properties: {
+                  title: { type: 'string' },
+                  description: { type: 'string' },
+                  complexity: { type: 'number' },
+                  priority: { 
+                    type: 'string',
+                    enum: ['critical', 'high', 'medium', 'low'],
+                  },
+                  dueDate: { type: 'string' },
+                  tags: { 
+                    type: 'array',
+                    items: { type: 'string' },
+                  },
+                  assignedTo: { type: 'string' },
+                  milestone: { type: 'boolean' },
+                  codeExample: { type: 'string' },
+                  isComplete: { type: 'boolean' },
+                },
+              },
+            },
+            required: ['todoId', 'updates'],
+          },
+        },
+        {
+          name: 'update_goal_status',
+          description: 'Update the status of the current goal',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              status: {
+                type: 'string',
+                description: 'New status of the goal',
+                enum: ['planning', 'in_progress', 'completed', 'on_hold'],
+              },
+            },
+            required: ['status'],
+          },
+        },
+        {
+          name: 'get_plan_stats',
+          description: 'Get statistics about the current plan',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+        {
+          name: 'export_plan',
+          description: 'Export the current plan to JSON',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
+        {
+          name: 'import_plan',
+          description: 'Import a plan from JSON',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              planJson: {
+                type: 'string',
+                description: 'Plan JSON data to import',
+              },
+            },
+            required: ['planJson'],
+          },
+        },
+        {
+          name: 'visualize_plan',
+          description: 'Get visualization instructions for the current plan',
+          inputSchema: {
+            type: 'object',
+            properties: {},
+          },
+        },
       ],
     }));
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       switch (request.params.name) {
         case 'start_planning': {
-          const { goal } = request.params.arguments as { goal: string };
-          this.currentGoal = await storage.createGoal(goal);
+          const { goal, deadline } = request.params.arguments as { 
+            goal: string;
+            deadline?: string;
+          };
+          this.currentGoal = await storage.createGoal(goal, deadline);
           await storage.createPlan(this.currentGoal.id);
 
           return {
@@ -234,11 +414,25 @@ class SoftwarePlanningServer {
             );
           }
 
-          const { plan } = request.params.arguments as { plan: string };
+          const { plan, notes } = request.params.arguments as { 
+            plan: string;
+            notes?: string;
+          };
           const todos = formatPlanAsTodos(plan);
+
+          const currentPlan = await storage.getPlan(this.currentGoal.id);
+          if (currentPlan) {
+            for (const todo of currentPlan.todos) {
+              await storage.removeTodo(this.currentGoal.id, todo.id);
+            }
+          }
 
           for (const todo of todos) {
             await storage.addTodo(this.currentGoal.id, todo);
+          }
+
+          if (notes) {
+            await storage.updatePlanNotes(this.currentGoal.id, notes);
           }
 
           return {
@@ -259,11 +453,37 @@ class SoftwarePlanningServer {
             );
           }
 
-          const todo = request.params.arguments as Omit<
+          const todoInput = request.params.arguments as Partial<Omit<
             Todo,
             'id' | 'isComplete' | 'createdAt' | 'updatedAt'
-          >;
-          const newTodo = await storage.addTodo(this.currentGoal.id, todo);
+          >>;
+          
+          // 确保必填字段存在
+          if (!todoInput.title || !todoInput.description || todoInput.complexity === undefined) {
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              'Title, description, and complexity are required fields'
+            );
+          }
+
+          // 设置默认优先级为medium
+          const todoParams: Omit<Todo, 'id' | 'isComplete' | 'createdAt' | 'updatedAt'> = {
+            title: todoInput.title,
+            description: todoInput.description,
+            complexity: todoInput.complexity,
+            priority: todoInput.priority,
+            codeExample: todoInput.codeExample,
+            steps: todoInput.steps,
+            output: todoInput.output,
+            dependencies: todoInput.dependencies,
+            risk: todoInput.risk,
+            milestone: !!todoInput.milestone,
+            dueDate: todoInput.dueDate,
+            tags: todoInput.tags,
+            assignedTo: todoInput.assignedTo
+          };
+          
+          const newTodo = await storage.addTodo(this.currentGoal.id, todoParams);
 
           return {
             content: [
@@ -304,7 +524,34 @@ class SoftwarePlanningServer {
             );
           }
 
-          const todos = await storage.getTodos(this.currentGoal.id);
+          const { filter, filterValue } = request.params.arguments as { 
+            filter?: 'all' | 'incomplete' | 'completed' | 'milestone' | 'priority' | 'tag' | 'assignedTo';
+            filterValue?: string;
+          };
+
+          let todos: Todo[];
+
+          if (filter === 'incomplete') {
+            todos = await storage.getIncompleteTodos(this.currentGoal.id);
+          } else if (filter === 'completed') {
+            const allTodos = await storage.getTodos(this.currentGoal.id);
+            todos = allTodos.filter(todo => todo.isComplete);
+          } else if (filter === 'milestone') {
+            const allTodos = await storage.getTodos(this.currentGoal.id);
+            todos = allTodos.filter(todo => todo.milestone);
+          } else if (filter === 'priority' && filterValue) {
+            todos = await storage.getTodosByPriority(
+              this.currentGoal.id, 
+              filterValue as 'critical' | 'high' | 'medium' | 'low'
+            );
+          } else if (filter === 'tag' && filterValue) {
+            todos = await storage.getTodosByTag(this.currentGoal.id, filterValue);
+          } else if (filter === 'assignedTo' && filterValue) {
+            const allTodos = await storage.getTodos(this.currentGoal.id);
+            todos = allTodos.filter(todo => todo.assignedTo === filterValue);
+          } else {
+            todos = await storage.getTodos(this.currentGoal.id);
+          }
 
           return {
             content: [
@@ -339,6 +586,152 @@ class SoftwarePlanningServer {
               {
                 type: 'text',
                 text: JSON.stringify(updatedTodo, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'update_todo': {
+          if (!this.currentGoal) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              'No active goal. Start a new planning session first.'
+            );
+          }
+
+          const { todoId, updates } = request.params.arguments as {
+            todoId: string;
+            updates: Partial<Omit<Todo, 'id' | 'createdAt'>>;
+          };
+
+          const updatedTodo = await storage.updateTodo(
+            this.currentGoal.id,
+            todoId,
+            updates
+          );
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(updatedTodo, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'update_goal_status': {
+          if (!this.currentGoal) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              'No active goal. Start a new planning session first.'
+            );
+          }
+
+          const { status } = request.params.arguments as {
+            status: 'planning' | 'in_progress' | 'completed' | 'on_hold';
+          };
+
+          const updatedGoal = await storage.updateGoalStatus(
+            this.currentGoal.id,
+            status
+          );
+
+          this.currentGoal = updatedGoal;
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Goal status updated to: ${status}`,
+              },
+            ],
+          };
+        }
+
+        case 'get_plan_stats': {
+          if (!this.currentGoal) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              'No active goal. Start a new planning session first.'
+            );
+          }
+
+          const stats = await storage.getPlanStats(this.currentGoal.id);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(stats, null, 2),
+              },
+            ],
+          };
+        }
+
+        case 'export_plan': {
+          if (!this.currentGoal) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              'No active goal. Start a new planning session first.'
+            );
+          }
+
+          const exportData = await storage.exportPlanToJson(this.currentGoal.id);
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: exportData,
+              },
+            ],
+          };
+        }
+
+        case 'import_plan': {
+          const { planJson } = request.params.arguments as { planJson: string };
+
+          try {
+            const importedData = await storage.importPlanFromJson(planJson);
+            this.currentGoal = importedData.goal;
+
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `Successfully imported plan for goal: ${this.currentGoal.description}`,
+                },
+              ],
+            };
+          } catch (error) {
+            throw new McpError(
+              ErrorCode.InvalidParams,
+              `Failed to import plan: ${error instanceof Error ? error.message : String(error)}`
+            );
+          }
+        }
+
+        case 'visualize_plan': {
+          if (!this.currentGoal) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              'No active goal. Start a new planning session first.'
+            );
+          }
+
+          const todos = await storage.getTodos(this.currentGoal.id);
+          
+          let todoListText = '';
+          for (const todo of todos) {
+            todoListText += formatTodoAsText(todo) + '\n\n';
+          }
+
+          return {
+            content: [
+              {
+                type: 'text',
+                text: VISUALIZATION_PROMPT + '\n\n当前计划任务列表：\n\n' + todoListText,
               },
             ],
           };
