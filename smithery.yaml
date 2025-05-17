@@ -6,7 +6,9 @@ startCommand:
     # JSON Schema defining the configuration options for the MCP.
     type: object
     properties: {}
+  # 推荐npx方式启动，若未发布npm包可用node方式
   commandFunction:
-    # A function that produces the CLI command to start the MCP on stdio.
     |-
-    () => ({ command: 'node', args: ['build/index.js'] })
+    (useNpx = true) => useNpx
+      ? ({ command: 'npx', args: ['-y', 'software-planning-tool'] })
+      : ({ command: 'node', args: ['build/index.js'] })

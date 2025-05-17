@@ -7,6 +7,11 @@ export interface Todo {
   isComplete: boolean;
   createdAt: string;
   updatedAt: string;
+  steps?: string[];
+  output?: string;
+  dependencies?: string[];
+  risk?: string;
+  milestone?: boolean;
 }
 
 export interface Goal {
