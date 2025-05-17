@@ -34,38 +34,48 @@
 
 ## 快速开始
 
-### 方式一：使用 npx 一键启动（推荐）
+### 方式一：使用 npm 安装（推荐）
 
-无需本地构建，直接运行：
 ```bash
-npx -y software-planning-tool
+# 全局安装
+npm install -g @zhangzhixiong/software-planning-tool
+
+# 或作为项目依赖安装
+npm install @zhangzhixiong/software-planning-tool
 ```
 
-或在MCP配置中添加：
+### 方式二：使用 npx 直接运行
+
+```bash
+npx @zhangzhixiong/software-planning-tool
+```
+
+### 方式三：在MCP配置中使用
+
 ```json
 {
   "mcpServers": {
     "software-planning-tool": {
       "command": "npx",
-      "args": ["-y", "software-planning-tool"]
+      "args": ["@zhangzhixiong/software-planning-tool"]
     }
   }
 }
 ```
 
-### 方式二：克隆代码并本地运行
+### 方式四：克隆代码并本地运行
 
 适合开发和调试：
 ```bash
 # 克隆仓库
-git clone https://github.com/yourusername/software-planning-tool.git
+git clone https://github.com/zhangzhixiong/software-planning-tool.git
 cd software-planning-tool
 
 # 安装依赖
-pnpm install
+npm install
 
 # 构建
-pnpm run build
+npm run build
 
 # 运行
 node build/index.js
@@ -75,7 +85,9 @@ node build/index.js
 
 | 方式   | 优点                 | 适用场景         |
 |--------|----------------------|------------------|
-| npx    | 无需本地构建，升级快 | 生产/快速体验    |
+| npm全局 | 随时可用，升级方便   | 日常使用         |
+| npm本地 | 项目依赖管理         | 团队协作         |
+| npx    | 无需安装，即用即走   | 快速体验         |
 | 本地   | 可调试源码、自定义   | 开发/二次开发    |
 
 ---
@@ -103,7 +115,17 @@ const todo = await client.callTool("software-planning-tool", "add_todo", {
   tags: ["后端", "安全"], // 任务标签
   assignedTo: "张三", // 负责人
   codeExample: `// 代码片段`,
-  milestone: true // 是否为里程碑任务
+  milestone: true, // 是否为里程碑任务
+  steps: [ // 任务步骤
+    "设计API接口",
+    "实现参数验证",
+    "编写密码加密逻辑",
+    "完成数据库操作",
+    "编写单元测试"
+  ],
+  dependencies: ["数据库设计"], // 依赖的其他任务
+  risk: "需要考虑并发注册和安全性问题", // 风险说明
+  output: "完整的注册API接口文档和测试报告" // 预期输出
 });
 ```
 
@@ -129,6 +151,17 @@ const highPriorityTasks = await client.callTool("software-planning-tool", "get_t
 const backendTasks = await client.callTool("software-planning-tool", "get_todos", {
   filter: "tag",
   filterValue: "后端"
+});
+
+// 获取未完成的任务
+const incompleteTasks = await client.callTool("software-planning-tool", "get_todos", {
+  filter: "incomplete"
+});
+
+// 获取特定负责人的任务
+const userTasks = await client.callTool("software-planning-tool", "get_todos", {
+  filter: "assignedTo",
+  filterValue: "张三"
 });
 ```
 
@@ -184,43 +217,58 @@ software-planning-tool/
 
 ```bash
 # 安装依赖
-pnpm install
+npm install
 
 # 构建项目
-pnpm run build
+npm run build
 
 # 使用MCP Inspector测试
-pnpm run inspector
+npm run inspector
 ```
 
-### npm包发布
+### 开发注意事项
 
-有关如何发布此工具到npm的详细指南，请查看[NPM发布指南](./NPM_PUBLISH_GUIDE.md)。
+1. 确保使用 TypeScript 4.9+ 版本
+2. 遵循项目的代码风格指南
+3. 编写单元测试确保功能正确性
+4. 使用 `npm run inspector` 进行本地测试
 
 ---
 
 ## 常见问题FAQ
 
+### 安装相关
+
+- **npm安装失败？**  
+  检查网络连接，或尝试使用 `npm install --registry=https://registry.npmmirror.com`
+
 - **npx启动报错？**  
-  检查是否已发布npm包，或使用`npm link`在本地测试
+  检查是否已正确安装包，或使用 `npm link` 在本地测试
+
+### 使用相关
 
 - **如何重置数据？**  
-  删除用户目录下`.software-planning-tool/data.json`文件
+  删除用户目录下 `.software-planning-tool/data.json` 文件
 
 - **如何导出计划？**  
-  通过`export_plan`接口导出JSON，或使用`get_todos`接口获取所有任务
+  通过 `export_plan` 接口导出JSON，或使用 `get_todos` 接口获取所有任务
 
 - **支持多用户/多项目吗？**  
   当前为单用户单项目模式，未来版本将支持多项目管理
 
 - **数据备份在哪里？**  
-  数据保存在用户目录下的`.software-planning-tool/backups`目录中
+  数据保存在用户目录下的 `.software-planning-tool/backups` 目录中
+
+### 功能相关
 
 - **如何筛选优先级高的任务？**  
-  使用`get_todos`接口，设置`filter`为priority，`filterValue`为high或critical
+  使用 `get_todos` 接口，设置 `filter` 为 priority，`filterValue` 为 high 或 critical
 
 - **是否支持任务依赖关系？**  
-  是，可以在任务的dependencies字段中指定依赖的其他任务
+  是，可以在任务的 dependencies 字段中指定依赖的其他任务
+
+- **如何设置任务截止日期？**  
+  在添加或更新任务时，使用 `dueDate` 字段设置日期（格式：YYYY-MM-DD）
 
 ---
 
@@ -234,7 +282,21 @@ pnpm run inspector
 4. 推送到分支 (`git push origin feature/amazing-feature`)
 5. 开启一个Pull Request
 
+### 贡献规范
+
+1. 遵循项目的代码风格
+2. 确保所有测试通过
+3. 更新相关文档
+4. 提供清晰的提交信息
+
 ---
+
+## 版本历史
+
+- v0.0.1 (2024-03-17)
+  - 初始版本发布
+  - 支持基本的任务管理功能
+  - 实现计划导入导出
 
 ## 许可证
 
@@ -244,4 +306,5 @@ MIT
 
 <div align="center">
   <p>由 ❤️ 和 Model Context Protocol 强力驱动</p>
+  <p>作者：zhangzhixiong</p>
 </div>

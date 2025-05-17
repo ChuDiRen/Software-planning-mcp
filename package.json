@@ -1,8 +1,8 @@
 {
-  "name": "software-planning-tool",
+  "name": "@zhangzhixiong/software-planning-tool",
   "version": "0.0.1",
   "description": "A Model Context Protocol server",
-  "private": true,
+  "private": false,
   "type": "module",
   "bin": {
     "software-planning-tool": "./build/index.js"
@@ -17,7 +17,8 @@
     "inspector": "npx @modelcontextprotocol/inspector build/index.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "0.6.0"
+    "@modelcontextprotocol/sdk": "0.6.0",
+    "@zhangzhixiong/software-planning-tool": "^0.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.11.24",
